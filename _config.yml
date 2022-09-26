@@ -103,5 +103,5 @@ theme: butterfly
 ## Docs: https://hexo.io/docs/one-command-deployment
 deploy:
   type: git
-  repo: https://github.com/EndCredits/Crepuscular-Blog
+  repo: git@github.com:EndCredits/Crepuscular-Blog
   branch: main

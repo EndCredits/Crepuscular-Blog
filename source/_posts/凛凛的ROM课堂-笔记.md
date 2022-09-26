@@ -393,3 +393,6 @@ ROOT
     bootheader v4 同时还支持了分段的 vendor_boot 分区
 
     关于 bootheader 的讨论到此结束，剩余部分请查阅 AOSP 项目文档
+
+    ---
+    ## 未完待续 | To be continued
