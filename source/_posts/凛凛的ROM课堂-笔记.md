@@ -10,13 +10,12 @@ cover: https://avatars.githubusercontent.com/u/30337499?v=4
 
 最基础的文件有以下几个 
 
-```
+```vcs
 cce87ff thyme: Initial tree from lisa
 ```
 
+```text
 ROOT
-
-```
 |-Android.bp
 |-Android.mk
 |-AndroidProducts.mk
@@ -394,5 +393,98 @@ ROOT
 
     关于 bootheader 的讨论到此结束，剩余部分请查阅 AOSP 项目文档
 
-    ---
-    ## 未完待续 | To be continued
+    同理，上面中的 ```BOARD_KERNEL_BASE``` 和 ```BOARD_KERNEL_PAGESIZE``` 也可以从 ```unpackbootimg``` 中的输出信息中得到
+
+    事实上，像凛凛佬直播中使用的 ```magiskboot``` 程序会有更加良好的格式化以及更佳的可读性，同样也推荐使用
+
+    对于 ```BOARD_KERNEL_SEPARATED_DTBO```，这个 flag 在有独立的 dtbo 分区的设备上是必须打开的，它控制编译系统是否支持以及编译单独的 dtbo 分区
+
+    而 ```BOARD_MKBOOTIMG_ARGS``` 则是在生成 ```boot.img``` 时，传递给 ```mkbootimg``` 程序的参数，比如上述参数
+
+    ```Makefile
+    BOARD_MKBOOTIMG_ARGS += --header_version $(BOARD_BOOTIMG_HEADER_VERSION)
+    ```
+    意思就是给 ```mkbootimg``` 传入一个 --header_version 的参数，后面的是你的 bootheader version，已经在之前定义过了
+
+    下面的 ```TARGET_KERNEL_ADDITIONAL_FLAGS``` 则是在编译内核 ```Image``` 的时候，要传递给 ```make``` 程序的额外参数，比如上文中给出的
+
+    ```Makefile
+    TARGET_KERNEL_ADDITIONAL_FLAGS := DTC_EXT=$(shell pwd)/prebuilts/misc/$(HOST_OS)-x86/dtc/dtc
+    ```
+    其中 ```pwd``` 指令是自己当前所在的目录，这样展开其实就是 ```$ANDROID_ROOT/prebuilts/misc/linux-x86/dtc/dtc``` 传入这一句的意思是向 ```make``` 程序说明，我们不希望使用内核源码中自带的 dtc ( device tree compiler | 内核设备树编译器 ) 编译内核的 dts，而是使用这个外部的预编译的 dtc ，这样做一方面是可以避免因为 dtc 版本不同而导致语法的不兼容，避免编译失败，也可以节约使用 HOSTCC 编译 dtc 的时间 ( 虽然说这个时间成本跟编译整个系统比起来要低很多就是了... )
+
+    有的时候我们还需要用这个 flag 来传递一些信息，比如我们可以传入
+
+    ```Makefile
+    TARGET_KERNEL_ADDITIONAL_FLAGS += OBJDUMP=llvm-objdump
+    ```
+    这一句的意思是我们想要使用 LLVM 的 ```objdump``` 程序而不是用 ```gcc``` 的
+
+    而最后面的三个 flag 就比较易懂了，它们的作用已经写在了它们的名字里
+
+    内核部分结束了，然后是分区的定义
+
+    ```Makefile
+    # Metadata
+    BOARD_USES_METADATA_PARTITION := true
+    ```
+    这个 flag 指定了你需不需要用 ```metadata``` 分区进行加密，现在采用 FBEv1/v2 的机器基本上都会使用这个分区，同样地 ```fastboot``` 程序返回的数据里也会有关于这个分区的信息，视情况打开它就好
+
+    下面的是 oss vendor 所使用的分区信息
+    ```Makefile
+    # Partitions
+    BOARD_BOOTIMAGE_PARTITION_SIZE := 134217728
+    BOARD_CACHEIMAGE_PARTITION_SIZE := 402653184
+    BOARD_DTBOIMG_PARTITION_SIZE := 33554432
+    BOARD_RECOVERYIMAGE_PARTITION_SIZE := 134217728
+    BOARD_USERDATAIMAGE_PARTITION_SIZE := 114919714816
+
+    BOARD_SUPER_PARTITION_SIZE := 9126805504
+    BOARD_SUPER_PARTITION_GROUPS := qti_dynamic_partitions
+    BOARD_QTI_DYNAMIC_PARTITIONS_PARTITION_LIST := system system_ext product odm vendor
+    BOARD_QTI_DYNAMIC_PARTITIONS_SIZE := 9122611200
+
+    BOARD_FLASH_BLOCK_SIZE := 262144
+
+    BOARD_CACHEIMAGE_FILE_SYSTEM_TYPE := ext4
+    BOARD_ODMIMAGE_FILE_SYSTEM_TYPE := erofs
+    BOARD_PRODUCTIMAGE_FILE_SYSTEM_TYPE := erofs
+    BOARD_SYSTEM_EXTIMAGE_FILE_SYSTEM_TYPE := erofs
+    BOARD_SYSTEMIMAGE_FILE_SYSTEM_TYPE := erofs
+    BOARD_VENDORIMAGE_FILE_SYSTEM_TYPE := erofs
+
+    BOARD_EROFS_PCLUSTER_SIZE := 65536
+    BOARD_EROFS_USE_ZTAILPACKING := true
+
+    TARGET_COPY_OUT_ODM := odm
+    TARGET_COPY_OUT_PRODUCT := product
+    TARGET_COPY_OUT_SYSTEM_EXT := system_ext
+    TARGET_COPY_OUT_VENDOR := vendor
+    ```
+    首先是第一组数据，定义了 ```boot, cache, dtbo, recovery, userdata``` 这几个分区的大小，这些属性同样也都会在你执行 ```fastboot getvar all``` 的时候悉数返回给你，只不过返回的值是 16 进制的，你需要用一些工具把它转换成 10 进制
+
+    第二组中，```BOARD_SUPER_PARTITION_SIZE``` 定义了你的 super 分区的大小，获取方式同上，需要注意的是，只有在使用动态分区的设备上，第二块内容的定义才是必要的，否则如果没有使用动态分区，那么不需要定义 ```DYNAMIC_PARTITIONS``` 的相关属性
+
+    特别地，如果你的设备使用了 bootheader v3/v4 并且拥有 ```vendor_boot``` 分区，那么你还需要定义 ```BOARD_VENDOR_BOOT_PARTITIONS_SIZE``` 这个 flag 来告诉编译系统 ```vendor_boot``` 分区的大小
+
+    其中还有一个 flag ，```BOARD_QTI_DYNAMIC_PARTITIONS_PARTITION_LIST``` 定义了你的 super 分区中有哪些子分区，比如对于我们的 oss vendor 的编译需求，我们会需要去尽可能多的减少底包对我们的稳定性，所以我们需要将 super 分区里的全部内容都修改成我们需要的，也就是说我们编译我们需要的分区并且放进去，比如我们下面最后一组数据定义了我们会自行编译哪些分区的镜像，可以看到，有 ``` vendor product system_ext odm``` 当然还有最重要的 ```system``` ，所以我们把它们写入动态分区的列表中，告诉编译系统，生成 super 分区镜像的时候需要把哪些子分区的镜像一起打包进去
+
+    而对于 prebuit vendor ，不需要编译那么多东西，通常只需要 ```system product system_ext``` 就可以了
+
+    至于名字为什么是 ```QTI_DYNAMIC_PARTITIONS``` ，这都不要紧，可以自己定义一个，比如上面 ```BOARD_SUPER_PARTITION_GROUPS``` flag 定义的是 ```qti_dynamic_partitions``` ，我可以改成 ```picasso_dynamic_partitions```，只不过把所有的 ```QTI_DYNAMIC_PARTITIONS``` 都换成 ```PICASSO_DYNAMIC_PARTITIONS``` 就可以了
+
+    而对于 ```BOARD_QTI_DYNAMIC_PARTITIONS_SIZE``` 的计算方法
+
+    - Virtual AB:  ```BOARD_QTI_DYNAMIC_PARTITIONS_SIZE``` = ```BOARD_SUPER_PARTITION_SIZE``` - ```overhead```
+    - AB: ```BOARD_QTI_DYNAMIC_PARTITIONS_SIZE``` = ```BOARD_SUPER_PARTITION_SIZE``` / 2  - ```overhead```
+    - non-AB: ```BOARD_QTI_DYNAMIC_PARTITIONS_SIZE``` = ```BOARD_SUPER_PARTITION_SIZE``` - ```overhead```
+
+    其中 overhead 通常等于 4MB ，注意减去该值时需要将 MB 转化为 byte 才可以相减
+
+    下面的 ```BOARD_FLASH_BLOCK_SIZE``` 会定义在你的 boot.img 里，使用 ```unpackbootimg``` 工具可以看到这个值，它用于告诉 ```fastboot``` 它最大能一次刷入多少大小的东西，如果分区镜像文件的总大小超过了这个值，那就需要分步刷入，比如分成 7 次，每次刷入一点，这个值可以比 boot.img 中提取得到的值小，但绝对不能大，如果设置过大的话会导致无法刷入
+
+    第四组 flags 则是定义了你需要用什么样的分区格式，与 fstab 中的保持一致就好，需要注意的是，使用 ```erofs``` 文件系统需要内核支持，如若不支持请不要用 ```erofs```
+
+    最后一组就是定义了这些分区最终的编译产物的输出目录，copy 就好
+
+    TODO: Add Recovery and Android Verified Boot Context
