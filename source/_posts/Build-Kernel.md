@@ -1,5 +1,6 @@
 ---
 title: Build a Kernel for Redmi K30 5G by your self.
+date: 07-20-2022
 ---
 
 为自己的 Redmi K30 5G 编译一个 Linux 内核吧~ | 顺便记录一下自己编译内核的历程
