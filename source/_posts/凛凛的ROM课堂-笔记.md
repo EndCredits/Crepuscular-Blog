@@ -14,33 +14,23 @@ cover: https://avatars.githubusercontent.com/u/30337499?v=4
 cce87ff thyme: Initial tree from lisa
 ```
 
->ROOT
+ROOT
 
->> Android.bp
-
->> Android.mk
-
->> AndroidProducts.mk
-
->> BoardConfig.mk
-
->> device.mk
-
->> lineage_thyme.mk
-
->> recovery
-
->>> recovery.fstab
-
->> rootdir
-
->>> Android.mk
-
->>> etc
-
->>>> fstab.qcom
-
->>>> init.recovery.qcom.rc
+```
+|-Android.bp
+|-Android.mk
+|-AndroidProducts.mk
+|-BoardConfig.mk
+|-device.mk
+|-lineage_thyme.mk
+|-recovery
+| |-recovery.fstab
+|-rootdir
+| |-Android.mk
+| |-etc
+| | |-fstab.qcom
+| | |-init.recovery.qcom.rc
+```
 
 因为只是初始化了一个设备树的框架，所以比起 Github 上的成品 dt 会显得少很多东西，不要担心，之后我们会根据需要分别加入需要的部分
 
