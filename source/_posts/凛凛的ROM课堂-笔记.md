@@ -1,6 +1,7 @@
 ---
 title: 凛凛的ROM课堂 -- 笔记
 date: 2022-09-26 12:23:24
+cover: https://avatars.githubusercontent.com/u/30337499?v=4
 ---
 
 前一段 b 站直播凛凛没开麦... 斗胆加上一点点自己的理解（
@@ -237,7 +238,8 @@ cce87ff thyme: Initial tree from lisa
         vendor
     ```
 
-    ```AB_ORA_UPDATER``` 标志你的设备支持 AB 无缝系统更新， Legacy AB |  Dynamic AB | Virtual AB 都会需要这个，下面的 ```AB_OTA_PARTITIONS``` 定义了你的设备具有 AB 槽位的分区，这些分区会以 xxx_a 和 xxx_b 的形式出现在你的分区表里，你可以通过 ```fastboot``` 返回的信息确认你有哪些分区采用了 ab 架构
+
+    上面的 ```AB_OTA_UPDATER``` 标志你的设备支持 AB 无缝系统更新， Legacy AB |  Dynamic AB | Virtual AB 都会需要这个，下面的 ```AB_OTA_PARTITIONS``` 定义了你的设备具有 AB 槽位的分区，这些分区会以 xxx_a 和 xxx_b 的形式出现在你的分区表里，你可以通过 ```fastboot``` 返回的信息确认你有哪些分区采用了 ab 架构
 
     ```bash
     fastboot getvar all
@@ -265,7 +267,7 @@ cce87ff thyme: Initial tree from lisa
 
     内核编译是相对重要的一段，这里给出的实例是 oss kernel 的编译配置，prebuilt kernel 将会在下面给出
 
-    ```BOARD_KERNEL_CMDLINE``` 定义了传递给内核的可以理解为启动参数的命令行，这些当然不可能是我们默写出来的，它可以通过解包厂商 rom 里的 boot.img 得到，或者也可以通过 adb shell 查询
+    其中的 ```BOARD_KERNEL_CMDLINE``` 定义了传递给内核的可以理解为启动参数的命令行，这些当然不可能是我们默写出来的，它可以通过解包厂商 rom 里的 boot.img 得到，或者也可以通过 adb shell 查询
     ```bash
     adb shell cat /proc/cmdline
     ```
