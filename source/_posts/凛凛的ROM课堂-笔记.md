@@ -487,4 +487,92 @@ ROOT
 
     最后一组就是定义了这些分区最终的编译产物的输出目录，copy 就好
 
-    TODO: Add Recovery and Android Verified Boot Context
+    然后是一些杂项
+
+    ```Makefile
+    # Platform
+    BOARD_USE_QCOM_HARDWARE := true
+    TARGET_BOARD_PLATFORM := lito
+    ```
+    前一个比较明显，高通设备打开就好了，后面的那个跟你的 ```TARGET_BOOTLOADER_BOARD_NAME``` 保持一致就好了
+
+    然后是 Recovery 相关的配置
+
+    ```Makefile
+    >>>>>>> picasso: Recovery Section
+    # Recovery
+    BOARD_INCLUDE_DTB_IN_BOOTIMG := true
+    BOARD_INCLUDE_RECOVERY_DTBO := true
+    TARGET_RECOVERY_FSTAB := $(DEVICE_PATH)/rootdir/etc/fstab.emmc
+    TARGET_RECOVERY_PIXEL_FORMAT := "BGRA_8888"
+    TARGET_USERIMAGES_USE_EXT4 := true
+    TARGET_USERIMAGES_USE_F2FS := true
+    ========
+    # Recovery
+    BOARD_INCLUDE_RECOVERY_DTBO := true
+    BOARD_USES_RECOVERY_AS_BOOT := true
+    TARGET_NO_RECOVERY := true
+    TARGET_RECOVERY_FSTAB := $(DEVICE_PATH)/recovery/recovery.fstab
+    TARGET_RECOVERY_PIXEL_FORMAT := "RGBX_8888"
+    TARGET_USERIMAGES_USE_EXT4 := true
+    TARGET_USERIMAGES_USE_F2FS := true
+    <<<<<<< thyme: Recovery Section
+    ```
+
+    可以看到差别不是很大，而且 flag 的名字也比较易懂，就只介绍 non-AB 和 AB 有什么异同点
+
+    对于 bootheader v2 及以上的具有独立 dtbo 分区的设备而言，```BOARD_INCLUDE_RECOVERY_DTBO``` 需要打开，这一点 ```picasso``` 是 v2，```thyme``` 是 v3，所以它们都启用了这个 flag，```BOARD_INCLUDE_DTB_IN_BOOTIMG``` 在 ```picasso``` 的配置中打开了，但是 ```thyme``` 没有打开，原因可以参照前文的 bootheader v3 发生的变化，它的 dtb 不再包含在 boot 分区中，而是移动到了 ```vendor_boot``` 分区里，所以 ```boot.img``` 里是不含 dtb 的，然后就是 ```BOARD_USES_RECOVERY_AS_BOOT``` 和 ```TARGET_NO_RECOVERY``` ，同样地，这个时候 AB 分区的手机不再有独立的 recovery 分区，而是合并进了 boot 分区，所以 ```thyme``` 打开了这两个 flag 而 ```picasso``` 没有
+
+    下面介绍它们共有的 flags
+
+    首先是 ```TARGET_RECOVERY_FSTAB``` ，它指定了你的 recovery 在挂载分区的时候应该使用哪个 fstab ，可以看到这里 ```picasso``` 直接复用了编译进系统的 fstab ，而 ```thyme``` 则是单独摘了一个出来，都可以
+
+    然后是 ```TARGET_RECOVERY_PIXEL_FORMAT```，它描述了你的 recovery 使用什么样的像素格式，像凛凛视频里那样介绍的拿取这个 flag 的值就好，或者也可以直接 copy 别的，影响不大
+
+    然后两个 flags 指定了你的 userdata 分区的格式，顾名思义即可
+
+    Android Verified Boot 的话... 直接去看 AOSP 的文档就好了，看看每一项都有什么作用
+
+    BoardConfig.mk 的内容肯定不止有这一点点，之后我们还会再加入，以完善这个设备树
+
+- device.mk
+
+    这个文件里主要定义了你需要编译进系统里的各种软件包，库文件，配置文件等等，你的大部分精力基本上都是花在这些东西上的，下面来分解一下它的内容
+
+    首先是 include 外部的 Makefile ，它们一般是这个格式
+
+    ```Makefile
+    # Installs gsi keys into ramdisk, to boot a GSI with verified boot.
+    $(call inherit-product, $(SRC_TARGET_DIR)/product/developer_gsi_keys.mk)
+    ```
+    需要注意的是凛凛直播中说到的 Updatable APEX ( 不是 APEX Legend !!! ) 我们使用 oss vendor 一般都不会打开，因为 ROM 优化的 jemalloc 或者 mimalloc 都在这里面， update 了之后就没了，而且在一些设备上还会造成 ```bootloop```，所以这里不多提了，不过它是很好的虚拟化和容器化的例子，感兴趣的话可以学习一下
+
+    当然说 prebuilt 必须要加上这个，毕竟它 vendor 自带的 apex 多半是我们不能用的，所以要 update 成我们自己的
+
+    下面是 thyme 等 VAB 机型必须加入的内容
+
+    ```Makefile
+    # Virtual A/B
+    ENABLE_VIRTUAL_AB := ture
+    $(call inherit-product, $(SRC_TARGET_DIR)/product/virtual_ab_ota.mk)
+    ```
+    意思比较一目了然，表明你的设备支持并使用了 Virtual A/B 分区布局，如果不是 VAB 的话这里不需要加
+
+    然后是 Dalvik VM 堆内存的配置
+    
+    ```
+    # Setup dalvik vm configs
+    $(call inherit-product, frameworks/native/build/phone-xhdpi-6144-dalvik-heap.mk)
+
+    ```
+
+    现代手机基本都是 6GB+ 了，所以直接用这个就好，然后的话对于老机型就去这个目录下找你对应的内存容量，加上就好了
+
+    然后是这个标记设备出厂时的 Android 版本的 flag
+
+    ```Makefile
+    # Shipping API level
+    PRODUCT_SHIPPING_API_LEVEL := 29
+    ```
+
+    是几就写几，特别重要不能写错，Android 版本与 API 版本的对应关系可以在 AOSP 文档里查到
