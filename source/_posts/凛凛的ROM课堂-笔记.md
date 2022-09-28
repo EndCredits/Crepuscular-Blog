@@ -796,3 +796,100 @@ framework_compatibility_matrixes.xml
 ```
 
 oss tree 稍后会再讲，嘛... 对于 prebuilt vendor 来说没那么麻烦，你就只需要一个 ```framework_compatibility_matrixes.xml``` 就足够了，这个文件是跟你 framework 里定义的 HAL 相关的，而对于你 device 自定义的 HAL 才需要上面的两个文件来描述它们，而这些 prebuilt vendor 都已经包含了，所以不需要
+
+从扩展名就可以看出， VINTF 配置文件采用 xml 语法，一般对于 ```manifest.xml``` 中的项来说，它们一般都像这样
+
+```xml
+<hal format="hidl">
+    <name>android.hardware.biometrics.fingerprint</name>
+    <transport>hwbinder</transport>
+    <version>2.1</version>
+    <interface>
+        <name>IBiometricsFingerprint</name>
+        <instance>default</instance>
+    </interface>
+</hal>
+```
+
+- ```name``` 定义了一个 HAL 的名字
+- ```transport``` 定义了该 HAL 使用什么方式进行通信，对于 Android 9 之后 binderlized 的 HAL 而言一般都是 ```hwbinder```，对于一些老的 HAL 它们通常是 ```passthrough```
+- ```version``` 标记了这个 HAL 的版本
+- ```interface``` 定义了这个 HAL 的接口，也就是 ```getTransport``` 需要的东西，这个接口可以有多个，比如下面 ```vendor fingerprint hal``` 的例子
+- ```interface``` -> ```name``` 标记了一个接口的名称
+- ```interface``` -> ```instance``` 标记了这个接口的实现，实现可以有多个
+
+这里```name``` 和 ```instance``` 可以唯一确定一个接口，它们绝不会有重复
+
+这是一个 ```Vendor Fingerprint HAL``` 的例子
+
+```xml
+<hal format="hidl">
+    <name>vendor.goodix.hardware.cap.biometrics.fingerprint</name>
+    <transport>hwbinder</transport>
+    <version>2.1</version>
+    <interface>
+        <name>IGoodixFingerprintDaemon</name>
+        <instance>default</instance>
+    </interface>
+    <interface>
+        <name>IGoodixFingerprintDaemonExt</name>
+        <instance>default</instance>
+    </interface>
+</hal>
+```
+
+可以看到 ```interface```可以有多个，它也可以这么写
+
+```xml
+<hal format="hidl">
+    <name>vendor.goodix.hardware.cap.biometrics.fingerprint</name>
+    <transport>hwbinder</transport>
+    <fqname>@2.1::IGoodixFingerprintDaemon/default</fqname>
+    <fqname>@2.1::IGoodixFingerprintDaemonExt/default</fqname>
+</hal>
+```
+用 ```fqname``` 可以简化写法，甚至可以定义不同接口多个版本，像下面 ```Radio HAL``` 的写法
+
+```xml
+<hal format="hidl">
+    <name>android.hardware.radio</name>
+    <transport>hwbinder</transport>
+    <fqname>@1.5::IRadio/slot1</fqname>
+    <fqname>@1.5::IRadio/slot2</fqname>
+    <fqname>@1.2::ISap/slot1</fqname>
+    <fqname>@1.2::ISap/slot2</fqname>
+</hal>
+```
+
+当然说具体应该写什么还得看系统给你报什么错，这个错误一般是由 ```check_vintf_list``` 在编译时报错以及 ```hwservicemanager``` 的  ```getTransport``` 在运行时报错，错一个修一个就可以
+
+不过一般也不用你来写，可以从 CLO 直接拿或者从 dump 里提取，用 find + grep 找它就好了
+
+## BootControl HAL
+
+> ```77e9181 thyme: Import and Build bootctl from CAF```
+
+Boot Control HAL 是使用 A/B 无缝系统更新的设备必须实现的 HAL ，它会接收来自系统 ```update_engine``` 的消息，选择启动时应该使用哪一个槽位，它实现了启动过程中的一个状态机，根据不同的情况进行不同的槽位选择
+
+使用 A/B 无缝系统更新的设备 OEM 和 SoC 厂商必须确保 bootloader 已经按照要求实现了 bootcontrol hal 所需要的接口，这也是为什么 Google 的 boot control hal 我们没有办法直接用，因为这个跟 OEM 和 SoC 都有一定的关系，所以我们从 CAF ( 现在改名叫 CLO 了 ) 导入这个包含了高通特有修改的 bootctl 和 gpt-utils
+
+这一条 commit 对于使用 A/B 系统更新的设备来说直接 pick 就好
+
+## Build Flags
+
+这些 Build 过程中起作用标志位主要是为了打开一些编译系统默认已经弃用的功能，不想那么麻烦的话一股脑打开就好
+
+```Makefile
+# Build
+BUILD_BROKEN_DUP_RULES := true
+BUILD_BROKEN_ELF_PREBUILT_PRODUCT_COPY_FILES := true
+BUILD_BROKEN_VENDOR_PROPERTY_NAMESPACE := true
+BUILD_BROKEN_MISSING_REQUIRED_MODULES := true
+BUILD_BROKEN_ENFORCE_SYSPROP_OWNER := true
+```
+
+## IMS && Telephony
+
+> ```e6d415f thyme: Compile IMS & Telephony packages```
+
+这一条 commit 里的内容包含了编译 ```IMS``` 和 ```Telephony``` 功能的包，```IMS``` 通常跟 VOLTE 有关，Telephony 嘛，顾名思义，接打电话用的，高通设备 pick 这条 commit 就好
