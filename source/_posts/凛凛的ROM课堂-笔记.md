@@ -503,7 +503,7 @@ ROOT
     # Recovery
     BOARD_INCLUDE_DTB_IN_BOOTIMG := true
     BOARD_INCLUDE_RECOVERY_DTBO := true
-    TARGET_RECOVERY_FSTAB := $(DEVICE_PATH)/rootdir/etc/fstab.emmc
+    TARGET_RECOVERY_FSTAB := $(DEVICE_PATH)/rootdir/etc/fstab.qcom
     TARGET_RECOVERY_PIXEL_FORMAT := "BGRA_8888"
     TARGET_USERIMAGES_USE_EXT4 := true
     TARGET_USERIMAGES_USE_F2FS := true
@@ -533,11 +533,13 @@ ROOT
 
     Android Verified Boot 的话... 直接去看 AOSP 的文档就好了，看看每一项都有什么作用
 
+    比较奇怪的一点是，在我翻源码的时候并没有找到传递给 ```avbtool make_vbmeta_image``` 的 ```--flags``` 标志位是什么含义，如果有人知道为什么要加上这个 ```--flags 3``` 的话请告诉我，十分感谢
+
     BoardConfig.mk 的内容肯定不止有这一点点，之后我们还会再加入，以完善这个设备树
 
 - device.mk
 
-    这个文件里主要定义了你需要编译进系统里的各种软件包，库文件，配置文件等等，你的大部分精力基本上都是花在这些东西上的，下面来分解一下它的内容
+    这个文件里主要定义了你需要编译进系统里的各种软件包，库文件，配置文件等等，你的大部分精力基本上都是花在这些东西上的，下面来分解一下 prebuilt vendor 的内容
 
     首先是 include 外部的 Makefile ，它们一般是这个格式
 
@@ -576,3 +578,221 @@ ROOT
     ```
 
     是几就写几，特别重要不能写错，Android 版本与 API 版本的对应关系可以在 AOSP 文档里查到
+
+    然后就是 AB 系统更新的内容
+
+    ```Makefile
+    # A/B
+    AB_OTA_POSTINSTALL_CONFIG += \
+        RUN_POSTINSTALL_system=true \
+        POSTINSTALL_PATH_system=system/bin/otapreopt_script \
+        FILESYSTEM_TYPE_system=ext4 \
+        POSTINSTALL_OPITIONAL_system=true
+
+    ```
+
+    直接 copy 就好啦，不过要注意的是有的厂商会使用 erofs 或者别的文件系统 ，```FILESYSTEM_TYPE_system```要跟着一起变（ 最好 ) ，总之跟 fstab 中保持一致即可
+
+    然后设定启动动画的分辨率
+    ```Makefile
+    # Boot animation
+    TARGET_SCREEN_HEIGHT := 2400
+    TARGET_SCREEN_WIDTH := 1080
+    ```
+
+    这就看你设备具体长宽是多少了，单位是像素
+
+    下面定义了你的 init 脚本配置
+    
+    ```Makefile
+    # Common init scripts
+    PRODUCT_PACKAGES += \
+        init.recovery.qcom.rc
+    ```
+
+    见凛凛 commit 里的内容，这是我们目前为止遇到的第一个 product package，也就是编译进你的设备的 "包" ，顺带提一嘴如何用 Android.mk 定义一个简单的模块，也就是所谓的 "包"
+
+    >  File: $DEVICE_PATH/rootdir/Android.mk
+
+    ```Makefile
+    include $(CLEAR_VARS)
+    LOCAL_MODULE       := init.recovery.qcom.rc
+    LOCAL_MODULE_TAGS  := optional
+    LOCAL_MODULE_CLASS := ETC
+    LOCAL_SRC_FILES    := etc/init.recovery.qcom.rc
+    LOCAL_MODULE_PATH  := $(TARGET_ROOT_OUT)
+    include $(BUILD_PREBUILT)
+    ```
+
+    上面的字段中，首先是 include 了 ```$(CLEAR_VARS)```，用于清除之前一个模块的配置信息 ( 比如前一个模块定义的 ```LOCAL_MODULE``` )，以免影响到我们这个模块的编译，然后是 ```LOCAL_MODULE_CLASS``` 定义了你这个模块所属的类，比如这个模块属于 ETC 类，后面的 ```LOCAL_SRC_FILES``` 则是定义了这个文件的具体位置 (相对于 Android.mk 的路径)，后面的 ```LOCAL_MODULE_PATH``` 定义了最后你的这个文件会被拷贝到哪里去，比如上文的这个模块，```init.recovery.qcom.rc``` 就会被放置到 ```$(TARGET_ROOT_OUT)``` 这个位置，它是 AOSP 编译系统预先定义好的一组环境变量，用来告知编译系统你想把这个文件放到哪里，这里的意思就是放在 ```root``` 目录，其实对于 system-as-root 而言，也就是放进 system 里，以前的不使用 system-as-root 的机型可能会有 ramdisk，或者使用 2 Stage init 的设备也会有一个 ramdisk，最后就是 ```include $(BUILD_PREBUILT)``` ，它指明了你定义的这是个什么类型的文件，比如这个就是一个 prebuilt 文件，它决定了编译系统最后会怎么处置这个模块定义的源文件，它们也是 AOSP 编译系统预先定义的一组环境变量，可以去 build/make 里查看
+
+    好的继续
+
+    上面 Common init scripts 字段中， ```PRODUCT_PACKAGES``` 定义了你需要将哪些包编译进系统，需要注意的是，这时候为这个变量赋值的时候必须使用 ```+=``` 运算符而不能使用 ```:=```，使用后者会导致你原本的 ```PRODUCT_PACKAGES``` 被 override，这样很多软件包就丢了，毕竟这么大一个系统，不能只编译咱们定义的这几个 packages，所以上面那一句赋值的意思就是你想要多编译一个叫 ```init.recovery.qcom.rc``` 的包进入系统，加上这一句之后编译系统就会在它能访问的命名空间里找这个模块并且帮你编译进去，如果它找不到，它就会向你报错，告诉你这个模块它找不到，请君明鉴
+
+    然后是 fastbootd 的内容，fastbootd 是用户空间内的 fastboot 程序，用于操作 super 分区内的子分区，比如 system, vendor, system_ext 等等
+
+    ```Makefile
+    # Fastbootd
+    PRODUCT_PACKAGES += \
+        fastbootd \
+        android.hardware.fastboot@1.0-impl-mock
+    ```
+
+    之后的内容就比较简单了，只记录下 initial commit 的内容
+
+    ```Makefile
+    # F2FS utilities
+    PRODUCT_PACKAGES += \
+        sg_write_buffer \
+        f2fs_io \
+        check_f2fs \
+    
+    # Partitions
+    PRODUCT_BUILD_SUPER_PARTITION := false
+    PRODUCT_USE_DYNAMIC_PARTITIONS := true
+
+    # Soong namespace
+    PRODUCT_SOONG_NAMESPACE := \
+        $(LOCAL_PATH)
+
+    # Update engine
+    PRODUCT_PACKAGES += \
+        otapreopt_script \
+        update_engine \
+        update_engine_sideload \
+        update_verifier
+    
+    PRODUCT_PACKAGES_DEBUG += \
+        update_engine_client
+
+    PRODUCT_HOST_PACKAGES += \
+        brillo_update_payload
+    ```
+
+    需要注意的是 Update engine 只有 A/B 设备才会使用，Aonly 的设备不需要添加这些
+
+    然后是为 ramdisk 添加 fstab.qcom
+
+    ```Makefile
+    # Vendor Boot
+    PRODUCT_COPY_FILES += \
+        $(LOCAL_PATH)/rootdir/etc/fstab.qcom:$(TARGET_COPY_OUT_VENDOR_RAMDISK)/first_stage_ramdisk/fstab.qcom
+    ```
+
+    其中有些分区需要在第一阶段 init 的时候挂载，不然的话后续的系统加载流程找不到这些分区，系统就无法启动，对于 bootheader v3/v4 使用 Virtual A/B 分区布局的设备来说，我们需要把它拷贝到 ```vendor_boot``` 里的第一阶段 init 读取的目录，对于 A/B 或者 non-A/B 设备，我们只需要把它拷贝到第一阶段 ramdisk 里就好，比如你可以定义一下下面的模块
+
+    > $(DEVICE_PATH)/rootdir/Android.mk
+
+    ```
+    include $(CLEAR_VARS)
+    LOCAL_MODULE       := fstab.qcom.ramdisk
+    LOCAL_MODULE_STEM  := fstab.qcom
+    LOCAL_MODULE_TAGS  := optional
+    LOCAL_MODULE_CLASS := ETC
+    LOCAL_SRC_FILES    := etc/fstab.qcom
+    LOCAL_MODULE_PATH  := $(TARGET_RAMDISK_OUT)
+    include $(BUILD_PREBUILT)
+    ```
+
+    然后在 device.mk 里选择编译它
+
+    > $(DEVICE_PATH)/device.mk
+
+    ```Makefile
+    # Fstab
+    PRODUCT_PACKAGES += \
+        fstab.qcom.ramdisk
+    ```
+
+    后面凛凛直播的内容就是找文件了 (主要是 fstab) 和一个 init rc
+
+    基本的目录结构到这里就介绍完了
+
+## 后续工作
+
+其实凛凛在直播里说的很正确，前人已经踩过的坑就没有必要自己去踩一遍了，对于 bring up 新设备而言也是如此，找一个硬件跟你的手机差异不大的已经有 device tree 的机型做参考无疑是最佳的选择，这样可以少走很多弯路，使用它们的 commits ，然后自己去试着编译，哪里出问题了修哪里，修到最后，你的 device tree 也就大成了，在这个修的过程中你也会收获很多知识，得到很多经验，干这一块知识储备固然重要，但是经验也是很重要的，很多问题大佬看一眼就明白是哪里出了问题，是因为这个问题他遇到过了，他知道怎么去修复，或者他的知识储备很丰富，推断出这个问题可以怎么解决，对于高通设备而言，Soc 型号不一样甚至都没什么大问题，用同一个 tag ，需要的流程就基本一致，拿 lito 和 kona 举例子吧，它们都使用 SMxx50 的 tag，甚至 lito 的设备 inherit kona 的 common tree 做一点点然后编译就能开机
+
+## 私有 blobs
+
+也就是凛凛直播中提到的第二个 commit
+
+> ```3a51ade thyme: Import extract utils```
+
+这个 commit 里提交了三个文件
+
+```text
+extract-files.sh
+setup-makefiles.sh
+
+proprietary-files.txt
+```
+这三个文件非常重要，它们协同工作，从厂商的 rom 里提取 blobs，生成了你的 vendor tree ，今后如果使用 oss vendor ，这三个文件更是重中之重
+
+上面的 ```extract-files.sh``` 会读取 ```proprietary-files.txt``` 中的文件，然后从你厂商的 rom dump 里一个一个的把它们揪出来，放进 ```vendor/<manufacturer>/<devicecodename>``` ，为什么要从厂商的 dump 里提取呢，因为它们是私有的二进制文件，不能从 AOSP/CLO 源码里编译出来，所以我们必须使用它们来让一些 (实际上是几乎全部的) 硬件跑起来
+
+对于 prebuilt vendor， ```proprietary-files.txt``` 里的内容比较好搞，就直接 copy 那些内容，至于 oss vendor，放在之后补充
+
+凛凛的直播里说的很对的，不再赘述
+
+## vbmeta 与 dtbo
+
+接着就是下面一条 commit 的内容
+
+> 61c5e31 thyme: releasetools: Ship and update vbmeta and dtbo images
+> 76bfff7 thyme: releasetools: Add vbmeta_system to output zip
+
+所谓 releasetools ，顾名思义，就是用来往你最终的那个 zip 里添加文件的一个 python 脚本，AOSP 编译系统默认不会把 dtbo 和 vbmeta 分区镜像添加进我们最终的 zip，所以我们需要自定义一下它来让它识别我们编译得到的这些镜像并把它们加入
+
+同样地，如果想要在编译 rom 的时候顺便把 firmware 更新一并做进去的话，靠的也是这个文件
+
+## SELinux
+
+接下来你要面对的是整个过程里最让你头疼没有之一的东西，SELinux
+
+Security-Enhanced Linux ，是 Linux MAC 权限控制框架下的一个基于标签的强制权限控制实现，由美国国家安全局 (NSA) 开发并开源，目的是为了增强 Linux 的安全性，限制程序对系统的修改，该组件自 Linux 2.6 被合并入 Linux 主线并于 Android 4.4 开始为 Android 提供全面保护
+
+上面说的那么好，为什么令人头疼呢，那就是因为它的权限控制策略配置，真的超级超级麻烦...
+
+> 2048f0e thyme: include QCOM Sepolicy
+
+```Makefile
+# Sepolicy
+include device/qcom/sepolicy/SEPolicy.mk
+```
+
+Android 编译系统依赖 SELinux 上下文来确定每个文件的权限标签，不 include 它的话甚至编译都过不去，然后就是将 SELinux 设置为宽容模式
+
+```Makefile
+BOARD_KERNEL_CMDLINE += androidboot.selinux=permissive
+```
+SELinux 会阻止所有未经策略配置允许的对系统资源的访问，如果让 SELinux 处于强制模式而你还没有配置好它的策略的话，它会阻止 Android 系统的正常启动，你是绝对开不了机的
+
+开机之后就需要配置 sepolicy，以便于日后的 enforcing，所有未经允许的访问 SELinux 都会通过 ```logcat``` 或者 ```dmesg``` 日志来告诉你，它的格式一般是
+
+```log
+09-23 20:44:39.878 19355:19355 W android.hardware.fingerprint@2.1-service_picasso: type=1400 audit(0.0:410972): avc: denied { create } for name="gf_data" scontext=u:r:hal_fingerprint_default:s0 tcontext=u:object_r:system_data_root_file:s0 tclass=dir permissive=1
+```
+其中的 ```{}``` 里面的内容告诉了你是哪个操作被阻止了， ```name``` 的内容告诉你是什么东西发起了这个操作，```scontext``` 的内容告诉你发起这个操作的程序的 selinux 上下文标签是什么，比如上面的例子里它的标签就叫 ```hal_fingerprint_default```，然后 ```tcontext``` 的内容告诉你，被访问的目标的 selinux 上下文标签是什么，比如上面的例子里它是 ```system_data_root_file```，后面的 ```tclass``` 标识了被访问的内容是什么东西，在这个例子里它是 ```dir``` ，也就是个目录，后面的 ```permissive```标识当前 selinux 运行在什么模式下，比如这个例子里它运行在宽容模式下，那么 ```permissive``` 就是 1，如果它运行在 enforcing ( 强制 ) 模式下，那么它的值会变成 0
+
+你会得到一大堆像这种形式一样的报错，你的任务就是一个一个的去把它们解决掉然后添加策略... 是不是有点太麻烦了？？？
+
+不错，NSA 为我们提供了修复它的工具，```audit2allow```，详情可以直接查看 AOSP 文档，它会手把手的教你怎么用这个工具
+
+## VINTF
+
+Vendor 接口对象，描述了你的设备中所有 HAL 的信息，以供编译时对 HAL 接口的检查以及运行时 ```getTransport``` 来找到各个 HAL 的接口入口 ( 当然如果它找不到的话就会报错你就开不了机XD )，同时它也是 CTS 测试的重要一部分
+
+对了.. 凛凛直播的时候可能是太紧张口误说错了一个地方，就是 HAL 它是硬件抽象层 ( Hardware Abstraction Layer ) 而不是硬件叠加层 ( Hardware Overlay Layer )，这两个概念是不同的，感兴趣的同学可以自己去查一查维基
+
+> ```2055f62 thyme: Import FCM from stock```
+
+整个 VINTF 体现在你 oss device tree 里其实有三个文件
+
+```
+manifests.xml
+compatibility_matrixes.xml
+framework_compatibility_matrixes.xml
+```
+
+oss tree 稍后会再讲，嘛... 对于 prebuilt vendor 来说没那么麻烦，你就只需要一个 ```framework_compatibility_matrixes.xml``` 就足够了，这个文件是跟你 framework 里定义的 HAL 相关的，而对于你 device 自定义的 HAL 才需要上面的两个文件来描述它们，而这些 prebuilt vendor 都已经包含了，所以不需要
