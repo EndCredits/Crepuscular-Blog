@@ -887,9 +887,150 @@ BUILD_BROKEN_VENDOR_PROPERTY_NAMESPACE := true
 BUILD_BROKEN_MISSING_REQUIRED_MODULES := true
 BUILD_BROKEN_ENFORCE_SYSPROP_OWNER := true
 ```
+对于凛凛的那个 commit ，不加的话像这样的东西就会是 error 了
+
+```log
+build/make/core/Makefile:72: warning: overriding commands for target `/home/crepuscular/Working/home/crepuscular/development/aosp/out/target/product/picasso/vendor/lib/hw/audio.primary.lito.so'
+build/make/core/base_rules.mk:533: warning: ignoring old commands for target `/home/crepuscular/Working/home/crepuscular/development/aosp/out/target/product/picasso/vendor/lib/hw/audio.primary.lito.so'
+```
 
 ## IMS && Telephony
 
 > ```e6d415f thyme: Compile IMS & Telephony packages```
 
-这一条 commit 里的内容包含了编译 ```IMS``` 和 ```Telephony``` 功能的包，```IMS``` 通常跟 VOLTE 有关，Telephony 嘛，顾名思义，接打电话用的，高通设备 pick 这条 commit 就好
+这一条 commit 里的内容包含了编译 ```IMS``` 和 ```Telephony``` 功能的包，```IMS``` 通常跟 VOLTE 有关，Telephony 嘛，顾名思义，接打电话用的，高通设备 pick 这条 commit 就好，对于 MTK 设备的话，还需要 phh 的 IMS 补丁集
+
+## Prebuilt odm
+
+> ```adc57bd thyme: Use prebuilt odm from stock```
+
+对于 prebuilt vendor 的设备需要原厂的 odm.img ，因为 vendor 里的东西会需要 odm 分区中的一些内容，如果我们编译的东西把它们覆盖掉了那就不好了，所以需要 prebuilt
+
+像这条 commit 里的 ```THYME_PREBUILT``` flag 是你自己定义的变量，不用这个也没事，你也可以在 dt 里放一个 prebuilt 文件夹，把 ```odm.img``` 放进去，然后 ```BOARD_PREBUILT_ODMIMAGE``` 对应的改成你的路径就好了，比如
+
+```Makefile
+BOARD_PREBUILT_ODMIMAGE := $(LOCAL_PATH)/prebuilt/odm.img
+```
+
+对于上面的例子，之后就是记得在 ```AB_OTA_PARTITION``` 和 ```BOARD_THYME_DYNAMIC_PARTITIONS_PARTITION_LIST``` 里加上 odm 分区，让它一并被刷入就可以了
+
+## Overlay
+
+> ```d7f7f31 thyme: overlay: Import WifiRes overlay```
+
+严格意义上讲这里所说的 ```overlay``` 应该是特指 ```Runtime Resource Overlay```，运行时资源叠加层，它的作用是在运行时改变某一个目标软件包的资源值，它可以覆盖原本源码里写死的值，替换成你想要的值，这对我们来说是非常有用的，因为一些功能的开启和关闭或者系统 UI 一些属性的定义 ( 比如挖孔样式 ) 都可以通过它来定义而没有必要每个设备都去修改一遍源码
+
+```WifiResOverlay``` 顾名思义，就是应用到 WIFI 相关软件包的资源叠加层，它的作用就是改变默认编译的 WIFI 软件包里某一些资源的值，来看这个例子
+
+> $(DEVICE_PATH)/overlay/WifiResOverlayThyme/AndroidManifest.xml
+
+```xml
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    package="com.wifi.resources.thyme"
+    android:verisonCode="1"
+    android:versionName="1.0">
+    <application android:hasCode="false" />
+    <overlay android:targetPackage="com.android.wifi.resources"
+                   android:targetName="WifiCustomization"
+                   android:isStatic="true"
+                   android:priority="0" />
+</manifest>
+```
+
+接触过 Android 应用开发的同学应该对上面的那个文件很熟悉，它定义了一个 Android 软件包
+
+- ```manifest->package``` 属性描述了这个 overlay 包的名字
+- ```manifest->android:versionCode``` 属性描述了这个 overlay 包的版本
+- ```manifest->android:versionName``` 属性描述了这个 overlay 包的版本名字
+
+- ```overlay->android:targetPackage=``` 属性标示了这个 overlay 包要去覆盖哪个软件包 (包名) 的资源
+- ```overlay->android:targetName``` 属性描述了你这个 overlay 的 target 是谁
+
+重要的就是这些，其他的保持默认就好
+
+然后就是写入你想要覆盖的资源标签和内容，这些可以通过逆向厂商的 overlay 来获取，或者如果你自己有什么想法也可以往这里面加，同样遵循 xml 语法，厂商的 overlay 通常放在
+
+> ```/product/overlay/```
+
+去那里面把它们揪出来，然后用 ```apktool d <包>``` 或者 jadx 解包都可以，它们的资源文件就会全部暴露出来，放到你的 overlay 对应的目录中，在上面的例子里，它是
+
+> ```$(DEVICE_PATH)/overlay/WifiResOverlayThyme/res/values/```
+
+最后就是声明这个包是一个 overlay 并且在 device.mk 里编译它
+
+> ```$(DEVICE_PATH)/overlay/WifiResOverlayThyme/Android.bp```
+
+```blueprint
+runtime_resource_overlay {
+    name: "WifiResOverlayThyme",
+    theme: "WifiResOverlayThyme",
+    certificate: "platform",
+    sdk_version: "current",
+    product_specific: true,
+}
+```
+
+> ```$(DEVICE_PATH)/device.mk```
+
+```Makefile
+# Overlays
+PRODUCT_PACKAGES += \
+    WifiResOverlayThyme
+```
+
+加入其他的 overlay 方式也是一样的，有的时候一些 overlay 在你的厂商 overlay 里找不到的话可以去搜一下相近设备的 commit，如果有的话也可以直接采用
+
+另一种一些人比较熟悉的写法是 ```Static Resource Overlay```，就是写在这种文件里的 overlay
+
+> ```overlay/frameworks/base/core/res/res/values/config.xml```
+
+这种静态资源叠加层不像 RRO 将会作为一个独立的 APK 编译进系统，而是会在编译时生效，去叠加源码中对应路径的资源值，最后你编译出来的这个源码组件就是你想要的样子，这有一个缺点就是对于那种大型组件比如 fwb 来说的话，整个重新来编译它耗时很长 ( 真的很长 )，而对于 RRO 来说，它只需要编译 RRO 的那个 APK 就可以了，好处是相对于 RRO 它的性能稍微好那么一点 ( 但也只有一点 ) ，相比之下如果性能不是那种非常非常吃紧的情况下用 RRO 会更加合算，而且这样也是 Google 推荐的做法
+
+## Props
+
+这些属性定义了 Android 中的一些特性是否开启或者关闭，对于 Prebuilt vendor 来说没有太麻烦，去 stock 的包里拿 build.prop 里的内容就好，而对于 oss vendor，因为自己魔改的自由度更大嘛，你就可以支持一些原本不支持的特性，关于每一条 prop 都有什么作用，可以直接去 Android Code Search 上搜索，源码中都有详细的注释
+
+## Init Scripts 
+
+有一点点 Linux 基础的人都会知道这是干什么用的，不再赘述
+
+## Configs
+
+> ```b6f9728: thyme: Import audio policy configuration from CAF```
+
+这些配置文件是 ```AudioFlinger``` 或者 ```MediaProvider``` 或者 ```soundtrigger``` 等系统服务需要的，比如 picasso 有这些配置文件
+
+> $(DEVICE_PATH)/audio
+
+```text
+audio_effects.xml
+audio_io_policy.conf
+audio_platform_info.xml
+audio_platform_info_intcodec.xml
+audio_platform_info_lagoon_qrd.xml
+audio_platform_info_qrd.xml
+audio_policy_configuration.xml
+audio_policy_volumes.xml
+audio_tuning_mixer.txt
+mixer_paths.xml
+mixer_paths_cdp.xml
+mixer_paths_lagoonmtp.xml
+mixer_paths_lagoonqrd.xml
+mixer_paths_mtp.xml
+mixer_paths_overlay_dynamic.xml
+mixer_paths_overlay_static.xml
+mixer_paths_qrd.xml
+sound_trigger_mixer_paths.xml
+sound_trigger_mixer_paths_cdp.xml
+sound_trigger_mixer_paths_lagoonmtp.xml
+sound_trigger_mixer_paths_lagoonqrd.xml
+sound_trigger_mixer_paths_qrd.xml
+sound_trigger_platform_info.xml
+```
+
+Audio 的配置文件通常用于配置 Audio 路由转发以及系统的各项音频相关策略，Media 通常包含了对于系统软硬件解码器以及其他媒体的细节的描述，这些都可以直接从 stock ROM 里拿，它们一般会被放置在
+
+> ```/vendor/etc```
+
+至于需要拿取哪些文件，对于 prebuilt vendor 而言其实一个 ```audio_policy_configuration.xml``` 一般就足够，剩下的使用 prebuilt vendor 里的，对于 oss vendor 而言，不如一股脑全放进去，至少绝对不会少不是嘛（）
+
