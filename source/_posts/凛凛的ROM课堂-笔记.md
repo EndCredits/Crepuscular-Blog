@@ -779,6 +779,10 @@ SELinux 会阻止所有未经策略配置允许的对系统资源的访问，如
 
 不错，NSA 为我们提供了修复它的工具，```audit2allow```，详情可以直接查看 AOSP 文档，它会手把手的教你怎么用这个工具
 
+建议从导入一些别的机型的基本的 sepolicy 开始，比如 commit:
+
+> ```fb4d487 thyme: Initial sepolicy```
+
 ## VINTF
 
 Vendor 接口对象，描述了你的设备中所有 HAL 的信息，以供编译时对 HAL 接口的检查以及运行时 ```getTransport``` 来找到各个 HAL 的接口入口 ( 当然如果它找不到的话就会报错你就开不了机XD )，同时它也是 CTS 测试的重要一部分
@@ -1034,3 +1038,296 @@ Audio 的配置文件通常用于配置 Audio 路由转发以及系统的各项�
 
 至于需要拿取哪些文件，对于 prebuilt vendor 而言其实一个 ```audio_policy_configuration.xml``` 一般就足够，剩下的使用 prebuilt vendor 里的，对于 oss vendor 而言，不如一股脑全放进去，至少绝对不会少不是嘛（）
 
+## vendor overlay
+
+> ```231cae0 thyme: Start using vendor overlay```
+
+prebuilt vendor，顾名思义，预编译的 vendor，我们不能直接修改 vendor 里的内容，我来多提两嘴这个 commit 有什么作用
+
+而 ```vendor overlay``` 允许你在设备启动时将变更叠加到 vendor 分区里，vendor overlay 是一系列放置在 ```product``` 分区的 vendor 模块 ( 比如各种运行库，可执行文件等 )，它们将在设备启动时替换或者添加 vendor 对应路径的文件
+
+当设备启动时，```init``` 进程会完成第一阶段挂载并且读取默认的 props，然后 ```init``` 进程会读取 ```/product/vendor_overlay/<target_vendor_version>```，并且把该目录的子目录挂载到 ```vendor``` 分区对应的路径下
+
+要使用 ```vendor overlay``` 时，需要满足下面的条件
+
+- ```vendor``` 分区中存在要被叠加的目标路径
+- ```/product/vendor_overlay/<target_vendor_version>``` 下要叠加到 ```/vendor``` 里的子目录 ( 或文件 ) 与 ```/vendor``` 对应的目录具有相同的 SELinux 文件上下文 ( file context )
+- ```/vendor``` 下目标目录的 selinux 文件上下文 ( file context ) 允许 ```init``` 挂载
+
+>! 注意，Vendor Overlay 可以替换，添加，但不可以删除 vendor 下的文件
+
+>! 使用 Vendor Overlay 同时需要你的内核支持 overlayfs ，并且内核版本至少在 4.4 以上
+
+如果要使用 vendor overlay 的话， pick 上面的那条更改并且往 
+
+> ```/product/vendor_overlay/<target_vendor_version>``` 
+
+下放置你想要 overlay 的文件就可以了，具体这条 commit 时怎么写出来的就是上面的三个条件，详情可以查阅 AOSP 的文档查看添加所用的示例
+
+而 oss vendor 不需要 vendor overlay ，因为 oss vendor 里面一部分的文件是我们用 AOSP/CLO 源码编译进去的
+
+## Fingerprint
+
+可以考虑直接使用 prebuilt fingerprint hal ，或者对于屏下指纹可以使用 ```hardware/xiaomi``` 中的 common udsfps handler ，也就是修改过的 fingerprint hal 2.3，当然你可以自己来改，而侧边指纹通常是使用 fingerprint hal 2.1 ，导入之后自己修改即可，对于 sidefps 而言，通常是
+
+```log
+865a4e2 picasso: fingerprint: Add Xiaomi fingerprintextension support
+f0086ab picasso: fingerprint: Don't set ro.boot.fpsensor
+48bb127 picasso: Make fingerprint HIDL fully treble compliant
+157da0c picasso: Import fingerprint HIDL
+```
+对于 udsfp 的话，我没有做过，不敢说多，但是关于这方面的例子很多，都可以参考
+
+## Debug 调试
+
+对于 AOSP Bring up 过程中的调试，通常我们会用到两个东西
+
+### 1. logcat
+
+这是 AOSP 为我们提供的日志查看工具，可以输出 Android 各层输出的日志，有不同的日志输出级别，方便筛选信息，它通常是这个样子的
+
+```log
+08-19 23:03:43.941  1393  1730 V SystemServerTimingAsync: ssm.onUnlockedUser-0_com.android.server.wm.ActivityTaskManagerService$Lifecycle took to complete: 2ms
+08-19 23:03:43.941  1393  1730 D SystemServerTimingAsync: ssm.onUnlockedUser-0_com.android.server.am.ActivityManagerService$Lifecycle
+08-19 23:03:43.941  1393  1730 V SystemServerTimingAsync: ssm.onUnlockedUser-0_com.android.server.am.ActivityManagerService$Lifecycle took to complete: 0ms
+08-19 23:03:43.941  1393  1730 D SystemServerTimingAsync: ssm.onUnlockedUser-0_com.android.server.pm.DataLoaderManagerService
+08-19 23:03:43.941  1393  1730 V SystemServerTimingAsync: ssm.onUnlockedUser-0_com.android.server.pm.DataLoaderManagerService took to complete: 0ms
+08-19 23:03:43.941  1393  1730 D SystemServerTimingAsync: ssm.onUnlockedUser-0_com.android.server.power.PowerManagerService
+08-19 23:03:43.942  1393  1730 V SystemServerTimingAsync: ssm.onUnlockedUser-0_com.android.server.power.PowerManagerService took to complete: 0ms
+08-19 23:03:43.942  1393  1730 D SystemServerTimingAsync: ssm.onUnlockedUser-0_com.android.server.power.ThermalManagerService
+08-19 23:03:43.942  1393  1730 V SystemServerTimingAsync: ssm.onUnlockedUser-0_com.android.server.power.ThermalManagerService took to complete: 0ms
+08-19 23:03:43.942  1393  1730 D SystemServerTimingAsync: ssm.onUnlockedUser-0_com.android.server.power.hint.HintManagerService
+08-19 23:03:43.942  1393  1730 V SystemServerTimingAsync: ssm.onUnlockedUser-0_com.android.server.power.hint.HintManagerService took to complete: 0ms
+08-19 23:03:43.942  1393  1730 D SystemServerTimingAsync: ssm.onUnlockedUser-0_com.android.server.recoverysystem.RecoverySystemService$Lifecycle
+08-19 23:03:43.942  1393  1730 V SystemServerTimingAsync: ssm.onUnlockedUser-0_com.android.server.recoverysystem.RecoverySystemService$Lifecycle took to complete: 0ms
+08-19 23:03:43.942  1393  1730 D SystemServerTimingAsync: ssm.onUnlockedUser-0_com.android.server.lights.LightsService
+08-19 23:03:43.942  1393  1730 V SystemServerTimingAsync: ssm.onUnlockedUser-0_com.android.server.lights.LightsService took to complete: 0ms
+08-19 23:03:43.942  1393  1730 D SystemServerTimingAsync: ssm.onUnlockedUser-0_com.android.server.display.DisplayManagerService
+08-19 23:03:43.942  1393  1730 V SystemServerTimingAsync: ssm.onUnlockedUser-0_com.android.server.display.DisplayManagerService took to complete: 0ms
+08-19 23:03:43.942  1393  1730 D SystemServerTimingAsync: ssm.onUnlockedUser-0_com.android.server.pm.verify.domain.DomainVerificationService
+08-19 23:03:43.942  1393  1730 V SystemServerTimingAsync: ssm.onUnlockedUser-0_com.android.server.pm.verify.domain.DomainVerificationService took to complete: 0ms
+08-19 23:03:43.942  1393  1730 D SystemServerTimingAsync: ssm.onUnlockedUser-0_com.android.server.pm.PackageInstallerService$Lifecycle
+08-19 23:03:43.942  1393  1730 V SystemServerTimingAsync: ssm.onUnlockedUser-0_com.android.server.pm.PackageInstallerService$Lifecycle took to complete: 0ms
+08-19 23:03:43.942  1393  1730 D SystemServerTimingAsync: ssm.onUnlockedUser-0_com.android.server.pm.UserManagerService$LifeCycle
+08-19 23:03:43.942  1393  1730 V SystemServerTimingAsync: ssm.onUnlockedUser-0_com.android.server.pm.UserManagerService$LifeCycle took to complete: 0ms
+08-19 23:03:43.942  1393  1730 D SystemServerTimingAsync: ssm.onUnlockedUser-0_com.android.server.om.OverlayManagerService
+08-19 23:03:43.942  1393  1718 I AppWidgetServiceImpl: Processing of handleUserUnlocked u0 took 5 ms
+```
+它会提供给你很多信息
+
+如果你少了什么库，它通常会以 linker 或者 init 报错告诉你，格式是
+
+linker:
+```
+CANNOT LINK EXECTUABLE xxxx....
+```
+
+init:
+```
+dlopen failed
+```
+
+遇到这种情况你就可以去 Github 上搜索这个库，然后决定是从源码编译出这个库来，还是去 stock 的 ROM 里提取，还是从别的机型 kang
+
+如果 HAL 因为 vintf 原因挂掉了，```hwservicemanager``` 会向你报告错误，格式是
+
+```log
+hwservicemanager: getTransport: Cannot find entry <hal name>@<version number>::<interface name>/<interface instance> in either framework or device VINTF manifest.
+```
+
+如果这个 HAL 压根都没有， ```hwservicemanager``` , ```libc``` , ```HidlServiceManagement``` , ```init``` 都会向你报错，格式是
+```
+09-29 08:47:05.673  3866  5249 W HidlServiceManagement: Waited one second for vendor.qti.data.factory@2.0::IFactory/default
+09-29 08:47:05.673   608   608 I hwservicemanager: Since vendor.qti.data.factory@2.0::IFactory/default is not registered, trying to start it as a lazy HAL.
+09-29 08:47:05.674  3866  5249 I HidlServiceManagement: getService: Trying again for vendor.qti.data.factory@2.0::IFactory/default...
+09-29 08:47:05.676   608 20661 W libc    : Unable to set property "ctl.interface_start" to "vendor.qti.data.factory@2.0::IFactory/default": error code: 0x20
+09-29 08:47:05.676   608 20661 I hwservicemanager: Tried to start vendor.qti.data.factory@2.0::IFactory/default as a lazy service, but was unable to. Usually this happens when a service is not installed, but if the service is intended to be used as a lazy service, then it may be configured incorrectly.
+07-23 02:03:50.894     0     0 E init    : Control message: Could not find 'vendor.qti.data.factory@2.0::IFactory/default' for ctl.interface_start from pid: 608 (/system/bin/hwservicemanager)
+```
+
+如果系统里什么东西 crash 了，它会这样告诉你
+
+```
+09-14 12:03:02.155  7417  7417 F DEBUG   : *** *** *** *** *** *** *** *** *** *** *** *** *** *** *** ***
+09-14 12:03:02.155  7417  7417 F DEBUG   : crDroid Version: '9.0'
+09-14 12:03:02.155  7417  7417 F DEBUG   : Build fingerprint: 'Xiaomi/dipper/dipper:8.1.0/OPM1.171019.011/V9.5.5.0.OEAMIFA:user/release-keys'
+09-14 12:03:02.155  7417  7417 F DEBUG   : Revision: '0'
+09-14 12:03:02.155  7417  7417 F DEBUG   : ABI: 'arm64'
+09-14 12:03:02.155  7417  7417 F DEBUG   : Timestamp: 2022-09-14 12:03:02.019211249+0800
+09-14 12:03:02.155  7417  7417 F DEBUG   : Process uptime: 268s
+09-14 12:03:02.155  7417  7417 F DEBUG   : Cmdline: com.coolapk.market
+09-14 12:03:02.155  7417  7417 F DEBUG   : pid: 6936, tid: 6936, name: .coolapk.market  >>> com.coolapk.market <<<
+09-14 12:03:02.155  7417  7417 F DEBUG   : uid: 10257
+09-14 12:03:02.155  7417  7417 F DEBUG   : signal 11 (SIGSEGV), code 1 (SEGV_MAPERR), fault addr 0x0000000000000028
+09-14 12:03:02.155  7417  7417 F DEBUG   : Cause: null pointer dereference
+09-14 12:03:02.155  7417  7417 F DEBUG   :     x0  0000000000000000  x1  000000784208a5e0  x2  0000000000000200  x3  4c4d410100000000
+09-14 12:03:02.155  7417  7417 F DEBUG   :     x4  0000007840f56390  x5  0000000001414d4c  x6  0000000001414d4c  x7  0000007840f56004
+09-14 12:03:02.156  7417  7417 F DEBUG   :     x8  0000000000000001  x9  0000000000001b18  x10 0000000000001b18  x11 0000000000000000
+09-14 12:03:02.156  7417  7417 F DEBUG   :     x12 0037b99731b7b0b1  x13 0000000000000023  x14 0000007841f756d6  x15 000000000000000a
+09-14 12:03:02.156  7417  7417 F DEBUG   :     x16 0000000000000001  x17 000000784205ad40  x18 00000075ac0f3c0c  x19 0000000000000000
+09-14 12:03:02.156  7417  7417 F DEBUG   :     x20 0000007feb456204  x21 000000765c0a95d0  x22 0000007500516f73  x23 00000075ac0f89f0
+09-14 12:03:02.156  7417  7417 F DEBUG   :     x24 0000007840c7f000  x25 0000007500559000  x26 0000007840c7f000  x27 0000007500516f73
+09-14 12:03:02.156  7417  7417 F DEBUG   :     x28 0000000000000000  x29 000000762c0e3898
+09-14 12:03:02.156  7417  7417 F DEBUG   :     lr  000000750048c9a0  sp  0000007feb456180  pc  000000750048c9b0  pst 0000000000000000
+09-14 12:03:02.156  7417  7417 F DEBUG   : backtrace:
+09-14 12:03:02.156  7417  7417 F DEBUG   :       #00 pc 00000000000af9b0  [anon:.bss]
+```
+有时候就需要你自己判断该怎么去修了
+
+2. pstore
+
+pstore 是内核中用于实现调试的一个子系统，ramoops 会把控制台日志转储到一段特定的内存区域里，这部分内存不会被修改，不会断电丢失数据，在正常内核启动时，这部分数据会被挂载到 ```/sys/fs/pstore``` 下，这样你就可以知道 crash 的时候到底发生了什么，比如下面这个很经典的例子
+
+```log
+[    0.543742] Unable to handle kernel NULL pointer dereference at virtual address 0000000000000002
+[    0.543746] Mem abort info:
+[    0.543748]   ESR = 0x96000005
+[    0.543750]   Exception class = DABT (current EL), IL = 32 bits
+[    0.543752]   SET = 0, FnV = 0
+[    0.543754]   EA = 0, S1PTW = 0
+[    0.543756] Data abort info:
+[    0.543758]   ISV = 0, ISS = 0x00000005
+[    0.543761]   CM = 0, WnR = 0
+[    0.543763] [0000000000000002] user address but active_mm is swapper
+[    0.543767] Internal error: Oops: 96000005 [#1] PREEMPT SMP
+[    0.543770] Modules linked in:
+[    0.543774] Process swapper/0 (pid: 1, stack limit = 0x00000000a6b62718)
+[    0.543778] CPU: 7 PID: 1 Comm: swapper/0 Tainted: G S                4.19.259-Driftwood #5
+[    0.543780] Hardware name: Qualcomm Technologies, Inc. 7250 picasso (DT)
+[    0.543783] pstate: 20c00005 (nzCv daif +PAN +UAO)
+[    0.543795] pc : inode_permission2+0x20/0x180
+[    0.543798] lr : lookup_one_len_common+0x10c/0x140
+[    0.543801] sp : ffffff800805b750
+[    0.543802] x29: ffffff800805b750 x28: 0000000000000078 
+[    0.543806] x27: ffffff98f2c5b1b8 x26: dead000000000200 
+[    0.543808] x25: fffffff7b687cc10 x24: ffffff98f36f2f10 
+[    0.543810] x23: fffffff7b6adf420 x22: ffffff98f36f2f10 
+[    0.543812] x21: fffffff7b6adf490 x20: 0000000000000000 
+[    0.543815] x19: 0000000000000001 x18: 00000000000001c2 
+[    0.543817] x17: 000000000000ba7e x16: 00000000000000e4 
+[    0.543819] x15: 000000000000ffff x14: 000074756f307065 
+[    0.543822] x13: 00000000fffffffe x12: ffffffffffffffff 
+[    0.543824] x11: fffffff79949a270 x10: 000074756f307065 
+[    0.543827] x9 : df6191354b2a79c7 x8 : 0000000000000000 
+[    0.543830] x7 : 6e2f6f64fefefefe x6 : 0000808080808080 
+[    0.543832] x5 : 0000000000000000 x4 : ffffff800805b7a8 
+[    0.543835] x3 : 0000000000000000 x2 : 0000000000000001 
+[    0.543837] x1 : 0000000000000000 x0 : 0000000000000000 
+[    0.543840] Call trace:
+[    0.543843]  inode_permission2+0x20/0x180
+[    0.543846]  lookup_one_len_common+0x10c/0x140
+[    0.543849]  lookup_one_len_unlocked+0x38/0x100
+[    0.543854]  debugfs_lookup+0x44/0x70
+[    0.543865]  dwc3_gadget_free_endpoints+0x2c/0xd0
+[    0.543868]  dwc3_gadget_exit+0x28/0x140
+[    0.543872]  dwc3_remove+0x24/0x100
+[    0.543876]  platform_drv_remove+0x24/0x50
+[    0.543879]  device_release_driver_internal+0x16c/0x230
+[    0.543881]  device_release_driver+0x14/0x20
+[    0.543885]  bus_remove_device+0xd0/0x100
+[    0.543888]  device_del+0x288/0x580
+[    0.543890]  platform_device_unregister+0x2c/0xb0
+[    0.543895]  of_platform_device_destroy+0xb4/0xd0
+[    0.543897]  device_for_each_child+0x54/0xb0
+[    0.543900]  of_platform_depopulate+0x30/0x60
+[    0.543902]  dwc3_msm_probe+0xe10/0xf10
+[    0.543905]  platform_drv_probe+0x7c/0xc0
+[    0.543907]  really_probe+0x274/0x300
+[    0.543909]  driver_probe_device+0x60/0x100
+[    0.543911]  __driver_attach+0xcc/0x110
+[    0.543915]  bus_for_each_dev+0x78/0xc0
+[    0.543917]  driver_attach+0x20/0x30
+[    0.543920]  bus_add_driver+0x11c/0x200
+[    0.543923]  driver_register+0x74/0x110
+[    0.543926]  __platform_driver_register+0x40/0x50
+[    0.543928]  dwc3_msm_init+0x18/0x20
+[    0.543932]  do_one_initcall+0x118/0x280
+[    0.543937]  do_initcall_level+0x144/0x16c
+[    0.543939]  do_basic_setup+0x30/0x48
+[    0.543941]  kernel_init_freeable+0xc4/0x144
+[    0.543945]  kernel_init+0x14/0x290
+[    0.543947]  ret_from_fork+0x10/0x20
+[    0.543951] Code: 2a0203f3 aa0103f4 aa0003e8 37080202 (79400689) 
+[    0.543954] ---[ end trace f9c0eeb6e53bd0e4 ]---
+[    0.543971] Kernel panic - not syncing: Attempted to kill init! exitcode=0x0000000b
+[    0.543971] 
+[    0.543976] SMP: stopping secondary CPUs
+[    0.543986] devfreq_panic_callback: L3-DOMAIN
+[    0.543991]        PERF_STATE_DESIRED: 0x0000000b
+[    0.543994]             PSTATE_STATUS: 0xc44f03c4
+[    1.144083] ipa ipa3_active_clients_panic_notifier:305 
+[    1.144083] ---- Active Clients Table ----
+[    1.144083] 
+[    1.144083] Total active clients count: 0
+[    1.144083] 
+[    1.144090] Kernel Offset: 0x18e8800000 from 0xffffff8008000000
+[    1.144093] CPU features: 0x0000000c,a2802218
+[    1.144095] Memory Limit: none
+[    1.144099] Rebooting in 5 seconds..
+[    6.144528] SMP: stopping secondary CPUs
+[    6.144533] Going down for restart now
+```
+
+不过 prebuilt kernel 通常不会有这个，有的话基本就别想适配了（，所以这个主要是给 oss kernel 用的调试手段，在知道了是哪个函数 crash 之后，可以通过编译时生成的 ```System.map``` 来查询函数的具体地址，然后通过 ```addr2line``` 来查看到底是内核的哪一行出了问题
+
+寄存器信息也是很有用的，sp 寄存器会告诉你现在运行到了哪个地址，pc 和 lr 分别对应了函数调用栈中当前正在执行的和上一个函数
+
+## oss vendor
+
+说了这么久终于到了 oss vendor 了，oss vendor 相较于 prebuilt vendor 的区别就是它里面的内容有一些是厂商私有的 blobs，还有一部分是我们自己从 AOSP/CLO 编译的，因为 oss vendor 刷入时不像prebuilt vendor 不会修改原始 stock ，而是替换了整个 vendor 成我们自己的，这样做的好处是增加了我们的灵活性，可以灵活调整里面的 blobs，可以更新 HAL，可以更新二进制文件，可以适配新的 HAL，缺点就是十分麻烦，因为里面终究还是有私有的组件来确保你的设备能够正常运行，这些组件什么该加，什么不该加，HAL 需要编译什么，不需要编译什么，都由你来掌控，比较难以把握
+
+### 再谈 proprietary-files.txt
+
+前文中我们说到了这个文件的作用，我们发现，一些设备在 prebuilt vendor 下，这个文件不过几百行最多，但是一旦切换到了 oss vendor，这个文件马上就会有 1500 多行，这是为什么呢
+
+因为我们编译的 HAL 和二进制文件需要它们的支持，AOSP 源码编译出来的东西并不能满足我们设备的需要，这就需要厂商 blobs 出马，提供对我们设备的兼容性
+
+这里可以提供一点小小的经验关于这里到底应该添加什么东西以及从哪里找
+
+记得善用 ```find``` 和 ```grep``` 命令
+
+1. ACDB Data
+
+通常被放置在 
+
+> ```vendor/etc/acdbdata/``` 
+
+下，用于承载 ADSP 服务，通常需要全部加入，有啥要啥，这一块主要管通话以及音频路由
+
+2. ACDB Loader
+
+ACDB 加载器，用于承载 ADSP 数据文件，它们通常有以下内容，以 ```libacdb``` 开头
+
+```text
+vendor/lib/libacdb-fts.so
+vendor/lib/libacdbloader.so
+vendor/lib/libacdbrtac.so
+vendor/lib64/libacdb-fts.so
+vendor/lib64/libacdbloader.so
+vendor/lib64/libacdbrtac.so
+```
+
+3. ADSP 
+
+高通 ADSP 服务，我这里就将它与 CDSP 分开了，它们通常具有以下文件名和路径特征
+
+```
+vendor/bin -> { adsprpc | dspservice | loadalgo}
+vendor/etc/init -> { adscrpc-service.rc | hardware.dsp }
+vendor/etc/seccomp_policy -> { hardware.dsp }
+vendor/lib -> hardware.dsp
+vendor/lib64 -> { hardware.dsp | libadsp | libloadalgo }
+```
+用 find 找到它们，加入 proprietary-files 中就好了
+
+4. ADSP Modules
+
+高通 ADSP 服务模块，全部位于
+
+```
+vendor/lib/rfsa/adsp
+vendor/lib64/rfsa/adsp
+```
+这两个文件夹里所有的库全部加入
+
+5. 
