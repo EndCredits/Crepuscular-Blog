@@ -1313,7 +1313,7 @@ vendor/lib64/libacdbrtac.so
 
 3. ADSP 
 
-高通 ADSP 服务，我这里就将它与 CDSP 分开了，它们通常具有以下文件名和路径特征
+高通 ADSP ( Audio DSP ) 服务，我这里就将它与 CDSP ( Compute DSP ) 分开了，它们通常具有以下文件名和路径特征
 
 ```
 vendor/bin -> { adsprpc | dspservice | loadalgo}
@@ -1334,4 +1334,22 @@ vendor/lib64/rfsa/adsp
 ```
 这两个文件夹里所有的库全部加入
 
-5. 
+5. Alarm
+
+关机 Alarm 驱动及其配置文件，位于
+
+```
+/product/app/PowerOffAlarm
+/system_ext/framework/
+/vendor/bin
+/vendor/bin/hw
+/vendor/etc/init
+/vendor/lib64
+/vendor/lib64/hw
+```
+
+通常对应的 apk 叫做 PowerOffAlarm.apk，对应的二进制可执行文件叫做 power_off_alarm，其余的 Blobs 名字里都带 ```hardware.alarm``` 字段，find + grep 找它们就好
+
+6. ANT+
+
+ANT+ Wireless Service 驱动，
