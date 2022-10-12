@@ -1,0 +1,3 @@
+[submodule "themes/aurora"]
+	path = themes/aurora
+	url = https://github.com/auroral-ui/hexo-theme-aurora.git
