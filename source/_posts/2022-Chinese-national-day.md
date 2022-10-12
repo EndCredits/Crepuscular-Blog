@@ -1,6 +1,7 @@
 ---
 title: Happy birthday to my motherland -- China!
 date: 10-1-2022
+tag: Android
 cover: http://x0.ifengimg.com/res/2019/855A7E7B6D0AF80A577513EBE5DD64C969FFE6A9_size269_w600_h338.jpeg
 ---
 

@@ -803,7 +803,7 @@ oss tree 稍后会再讲，嘛... 对于 prebuilt vendor 来说没那么麻烦�
 
 从扩展名就可以看出， VINTF 配置文件采用 xml 语法，一般对于 ```manifest.xml``` 中的项来说，它们一般都像这样
 
-```xml
+```
 <hal format="hidl">
     <name>android.hardware.biometrics.fingerprint</name>
     <transport>hwbinder</transport>
@@ -826,7 +826,7 @@ oss tree 稍后会再讲，嘛... 对于 prebuilt vendor 来说没那么麻烦�
 
 这是一个 ```Vendor Fingerprint HAL``` 的例子
 
-```xml
+```
 <hal format="hidl">
     <name>vendor.goodix.hardware.cap.biometrics.fingerprint</name>
     <transport>hwbinder</transport>
@@ -844,7 +844,7 @@ oss tree 稍后会再讲，嘛... 对于 prebuilt vendor 来说没那么麻烦�
 
 可以看到 ```interface```可以有多个，它也可以这么写
 
-```xml
+```
 <hal format="hidl">
     <name>vendor.goodix.hardware.cap.biometrics.fingerprint</name>
     <transport>hwbinder</transport>
@@ -854,7 +854,7 @@ oss tree 稍后会再讲，嘛... 对于 prebuilt vendor 来说没那么麻烦�
 ```
 用 ```fqname``` 可以简化写法，甚至可以定义不同接口多个版本，像下面 ```Radio HAL``` 的写法
 
-```xml
+```
 <hal format="hidl">
     <name>android.hardware.radio</name>
     <transport>hwbinder</transport>
@@ -924,11 +924,11 @@ BOARD_PREBUILT_ODMIMAGE := $(LOCAL_PATH)/prebuilt/odm.img
 
 严格意义上讲这里所说的 ```overlay``` 应该是特指 ```Runtime Resource Overlay```，运行时资源叠加层，它的作用是在运行时改变某一个目标软件包的资源值，它可以覆盖原本源码里写死的值，替换成你想要的值，这对我们来说是非常有用的，因为一些功能的开启和关闭或者系统 UI 一些属性的定义 ( 比如挖孔样式 ) 都可以通过它来定义而没有必要每个设备都去修改一遍源码
 
-```WifiResOverlay``` 顾名思义，就是应用到 WIFI 相关软件包的资源叠加层，它的作用就是改变默认编译的 WIFI 软件包里某一些资源的值，来看这个例子
+至于 ```WifiResOverlay``` 顾名思义，就是应用到 WIFI 相关软件包的资源叠加层，它的作用就是改变默认编译的 WIFI 软件包里某一些资源的值，来看这个例子
 
 > $(DEVICE_PATH)/overlay/WifiResOverlayThyme/AndroidManifest.xml
 
-```xml
+```
 <manifest xmlns:android="http://schemas.android.com/apk/res/android"
     package="com.wifi.resources.thyme"
     android:verisonCode="1"
